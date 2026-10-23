@@ -9,6 +9,7 @@ from Scripts import kext_maestro
 from Scripts import report_validator
 from Scripts import run
 from Scripts import smbios
+from Scripts import usb_builder
 from Scripts import utils
 import updater
 import os
@@ -31,6 +32,7 @@ class OCPE:
         self.s = smbios.SMBIOS()
         self.v = report_validator.ReportValidator()
         self.r = run.Run()
+        self.usb = usb_builder.USBBuilder()
         self.result_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "Results")
 
     def select_hardware_report(self):
@@ -389,6 +391,8 @@ class OCPE:
             print("4. Customize Kexts")
             print("5. Customize SMBIOS Model")
             print("6. Build OpenCore EFI")
+            if os.name == "nt":
+                print("7. Windows EFI USB Build")
             print("")
             print("Q. Quit")
             print("")
@@ -408,6 +412,10 @@ class OCPE:
                 self.ac.select_acpi_patches(customized_hardware, disabled_devices)
                 needs_oclp = self.k.select_required_kexts(customized_hardware, macos_version, needs_oclp, self.ac.patches)
                 self.s.smbios_specific_options(customized_hardware, smbios_model, macos_version, self.ac.patches, self.k)
+
+            if option == "7" and os.name == "nt":
+                self.usb.build_usb(self.result_dir)
+                continue
 
             if not hardware_report_path:
                 self.u.head()
