@@ -15,6 +15,8 @@ set "py3v="
 set "py3path="
 set "pypath="
 set "targetpy=3"
+REM Python 3 version to download (3.12.10 is the last 3.12 release with installers)
+set "py3release=3.12.10"
 
 REM use_py3:
 REM   TRUE  = Use if found, use py2 otherwise
@@ -225,6 +227,10 @@ echo   ###               ###
 echo  # Installing Python #
 echo ###               ###
 echo.
+if "!targetpy!" == "3" (
+    set "release=!py3release!"
+    goto downloadpy
+)
 echo Gathering info from https://www.python.org/downloads/windows/...
 powershell -command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;(new-object System.Net.WebClient).DownloadFile('https://www.python.org/downloads/windows/','%TEMP%\pyurl.txt')"
 REM Extract it if it's gzip compressed
@@ -250,9 +256,10 @@ if "!release!" == "" (
         goto checkpy
     )
 )
+:downloadpy
 echo Found Python !release! - Downloading...
 REM Let's delete our txt file now - we no longer need it
-del "%TEMP%\pyurl.txt"
+if exist "%TEMP%\pyurl.txt" del "%TEMP%\pyurl.txt"
 REM At this point - we should have the version number.
 REM We can build the url like so: "https://www.python.org/ftp/python/[version]/python-[version]-amd64.exe"
 set "url=https://www.python.org/ftp/python/!release!/python-!release!-amd64.exe"
