@@ -311,6 +311,8 @@ class OCPE:
             except Exception as e:
                 print("Failed to remove file: {}".format(e))
         
+        open(os.path.join(self.result_dir, usb_builder.USBBuilder.build_marker), "w").close()
+
         self.u.progress_bar(title, steps, len(steps), done=True)
         
         print("OpenCore EFI build complete.")
