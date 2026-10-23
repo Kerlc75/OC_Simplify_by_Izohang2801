@@ -15,6 +15,9 @@ target="${script%.*}.py"
 #   FORCE = Use py3
 use_py3="TRUE"
 
+# Python 3 version to download (3.12.10 is the last 3.12 release with installers)
+py3_version="3.12.10"
+
 # We'll parse if the first argument passed is
 # --install-python and if so, we'll just install
 just_installing="FALSE"
@@ -79,6 +82,9 @@ download_py () {
     echo " #     Downloading Python     #"
     echo "###                        ###"
     echo
+    if [ -z "$vers" ] && [ "$use_py3" != "FALSE" ]; then
+        vers="$py3_version"
+    fi
     if [ -z "$vers" ]; then
         echo "Gathering latest version..."
         vers="$(get_remote_py_version)"
@@ -90,7 +96,11 @@ download_py () {
     echo "Located Version:  $vers"
     echo
     echo "Building download url..."
-    url="$(curl -L https://www.python.org/downloads/release/python-${vers//./}/ --compressed 2>&1 | grep -iE "python-$vers-macos.*.pkg\"" | awk -F'"' '{ print $2 }')"
+    if [ "$vers" == "$py3_version" ]; then
+        url="https://www.python.org/ftp/python/$vers/python-$vers-macos11.pkg"
+    else
+        url="$(curl -L https://www.python.org/downloads/release/python-${vers//./}/ --compressed 2>&1 | grep -iE "python-$vers-macos.*.pkg\"" | awk -F'"' '{ print $2 }')"
+    fi
     if [ -z "$url" ]; then
         # Couldn't get the URL - bail
         print_error
