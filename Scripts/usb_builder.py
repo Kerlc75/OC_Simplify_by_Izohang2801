@@ -5,10 +5,18 @@ import shutil
 import subprocess
 
 class USBBuilder:
+    build_marker = ".build_complete"
+    required_efi_files = (
+        ("EFI", "BOOT", "BOOTx64.efi"),
+        ("EFI", "OC", "OpenCore.efi"),
+        ("EFI", "OC", "config.plist"),
+    )
+
     def __init__(self):
         self.utils = utils.Utils()
         self.efi_size_gb = 4
         self.min_disk_size = (self.efi_size_gb + 1) * 1024 ** 3
+        self.max_disk_size = 2 * 1024 ** 4
 
     def is_admin(self):
         try:
@@ -30,18 +38,22 @@ class USBBuilder:
         output = self.powershell(
             "$ErrorActionPreference = 'Stop'; "
             "$disks = @(Get-Disk | Where-Object { $_.BusType -eq 'USB' -and -not $_.IsBoot -and -not $_.IsSystem } | Sort-Object Number | "
-            "Select-Object Number, FriendlyName, SerialNumber, Size, PartitionStyle, "
+            "Select-Object Number, UniqueId, FriendlyName, SerialNumber, Size, PartitionStyle, "
             "@{Name='DriveLetters'; Expression={ (@(Get-Partition -DiskNumber $_.Number -ErrorAction SilentlyContinue | Where-Object { $_.DriveLetter } | ForEach-Object { [string]$_.DriveLetter + ':' })) -join ', ' }}); "
             "ConvertTo-Json -InputObject $disks -Compress"
         )
         disks = json.loads(output) if output else []
         return disks if isinstance(disks, list) else [disks]
 
-    def format_disk(self, disk_number):
+    def disk_identity(self, disk):
+        return "{}|{}|{}".format(disk.get("UniqueId") or "", disk.get("SerialNumber") or "", disk.get("Size") or 0)
+
+    def format_disk(self, disk):
         script = """
 $ErrorActionPreference = 'Stop'
 $disk = Get-Disk -Number {number}
 if ($disk.BusType -ne 'USB' -or $disk.IsBoot -or $disk.IsSystem) {{ throw 'Disk {number} is not a removable USB data disk.' }}
+if ("$($disk.UniqueId)|$($disk.SerialNumber)|$($disk.Size)" -ne '{identity}') {{ throw 'Disk {number} is no longer the drive you selected. Nothing was changed.' }}
 if ($disk.IsOffline) {{ Set-Disk -Number {number} -IsOffline $false }}
 if ($disk.IsReadOnly) {{ Set-Disk -Number {number} -IsReadOnly $false }}
 if ($disk.PartitionStyle -ne 'RAW') {{ Clear-Disk -Number {number} -RemoveData -RemoveOEM -Confirm:$false }}
@@ -53,7 +65,7 @@ Format-Volume -Partition $data -FileSystem exFAT -NewFileSystemLabel 'DATA' -For
 $efi = Get-Partition -DiskNumber {number} -PartitionNumber $efi.PartitionNumber
 $data = Get-Partition -DiskNumber {number} -PartitionNumber $data.PartitionNumber
 ConvertTo-Json -Compress -InputObject @{{ EFI = [string]$efi.DriveLetter; DATA = [string]$data.DriveLetter }}
-""".format(number=int(disk_number), efi_size=self.efi_size_gb)
+""".format(number=int(disk.get("Number")), identity=self.disk_identity(disk).replace("'", "''"), efi_size=self.efi_size_gb)
         return json.loads(self.powershell(script).splitlines()[-1])
 
     def format_size(self, size):
@@ -72,8 +84,9 @@ ConvertTo-Json -Compress -InputObject @{{ EFI = [string]$efi.DriveLetter; DATA =
         self.utils.head(title)
         if os.name != "nt":
             return self.finish("This option is only available on Windows.")
-        if not os.path.isdir(efi_source):
-            return self.finish("No built EFI found at {}. Build the OpenCore EFI first.".format(efi_source))
+        missing = [os.path.join(*path) for path in self.required_efi_files if not os.path.isfile(os.path.join(result_dir, *path))]
+        if not os.path.isfile(os.path.join(result_dir, self.build_marker)) or missing:
+            return self.finish("No complete EFI build found at {}. Build the OpenCore EFI first.".format(efi_source))
         if not self.is_admin():
             return self.finish("Administrator rights are required. Close this window and run OpCore-Simplify.bat as Administrator.")
 
@@ -124,6 +137,10 @@ ConvertTo-Json -Compress -InputObject @{{ EFI = [string]$efi.DriveLetter; DATA =
                 print("\033[91mThe selected drive is too small. At least {} is required.\033[0m".format(self.format_size(self.min_disk_size)))
                 self.utils.request_input("Press Enter to continue...")
                 continue
+            if int(disk.get("Size", 0)) > self.max_disk_size:
+                print("\033[91mThe selected drive is larger than 2 TB, which an MBR partition table cannot fully use. Use a smaller drive.\033[0m")
+                self.utils.request_input("Press Enter to continue...")
+                continue
             break
 
         self.utils.head(title)
@@ -142,7 +159,7 @@ ConvertTo-Json -Compress -InputObject @{{ EFI = [string]$efi.DriveLetter; DATA =
         print("")
         print("Creating MBR disk, {} GB FAT32 EFI partition and exFAT DATA partition...".format(self.efi_size_gb))
         try:
-            letters = self.format_disk(disk.get("Number"))
+            letters = self.format_disk(disk)
         except Exception as e:
             return self.finish("Failed to format the USB drive: {}".format(e))
 
