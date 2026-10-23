@@ -70,7 +70,8 @@ class ConfigProdigy:
     def igpu_properties(self, platform, integrated_gpu, monitor, macos_version):
         igpu_properties = {}
 
-        device_id = integrated_gpu[1].get("Device ID")[5:]
+        spoof_device_id = integrated_gpu[1].get("Spoof Device ID")
+        device_id = (spoof_device_id or integrated_gpu[1].get("Device ID"))[5:]
 
         if device_id.startswith(("0042", "0046")):
             igpu_properties["framebuffer-patch-enable"] = "01000000"
@@ -224,6 +225,10 @@ class ConfigProdigy:
             igpu_properties["framebuffer-fbmem"] = "00009000"
         else:
             self.warnings.append(f"Unrecognized Intel iGPU device ID '{device_id}' — no framebuffer patch applied")
+
+        if spoof_device_id:
+            igpu_properties["device-id"] = "{}{}0000".format(device_id[2:], device_id[:2])
+            self.warnings.append("Unsupported Intel iGPU '{}' is using nearest iGPU patches ({}) — at your own risk".format(integrated_gpu[1].get("Device ID"), spoof_device_id))
 
         if any(tuple(map(int, "3840x2160".split("x"))) <= tuple(map(int, monitor_info.get("Resolution").split("x"))) for monitor_name, monitor_info in monitor.items()):
             if platform == "Laptop":
@@ -537,7 +542,7 @@ class ConfigProdigy:
                     if intergrated_gpu[-1].get("OCLP Compatibility"):
                         boot_args.append("ipc_control_port_options=0")
 
-                    if "Ice Lake" in intergrated_gpu[-1].get("Codename"):
+                    if "Ice Lake" in intergrated_gpu[-1].get("Codename") or intergrated_gpu[-1].get("Spoof Device ID", "")[5:].startswith("8A"):
                         boot_args.extend(("-noDC9", "-igfxblr"))
 
                     if "Desktop" in hardware_report.get("Motherboard").get("Platform"):
