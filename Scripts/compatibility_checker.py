@@ -8,6 +8,8 @@ import time
 class CompatibilityChecker:
     def __init__(self):
         self.utils = utils.Utils()
+        self.nearest_igpu_device_id = "8086-8A52"
+        self.nearest_igpu_min_version = "19.4.0"
 
     def _widest_compatibility(self, compatibilities):
         compatibilities = [
@@ -22,6 +24,38 @@ class CompatibilityChecker:
             max(compatibilities, key=lambda compatibility: self.utils.parse_darwin_version(compatibility[0]))[0],
             min(compatibilities, key=lambda compatibility: self.utils.parse_darwin_version(compatibility[1]))[1]
         )
+
+    def use_nearest_igpu_fallback(self):
+        unsupported_igpus = [
+            (gpu_name, gpu_props) for gpu_name, gpu_props in self.hardware_report.get("GPU").items()
+            if "Intel" in gpu_props.get("Manufacturer", "") and
+               gpu_props.get("Device Type") == "Integrated GPU" and
+               gpu_props.get("Compatibility") == (None, None)
+        ]
+
+        if not unsupported_igpus:
+            return False
+
+        print("")
+        print("\033[1;93mWarning:\033[0m No supported GPU was found.")
+        print("You can continue with patches for the nearest supported Intel iGPU")
+        print("(Ice Lake, {}). macOS has no driver for your iGPU, so this is".format(self.nearest_igpu_device_id))
+        print("unsupported: expect no graphics acceleration, a black screen, or a failed boot.")
+        print("")
+
+        while True:
+            option = self.utils.request_input("Continue with nearest iGPU patches at your own risk? (yes/No): ").strip().lower()
+            if option == "yes":
+                break
+            elif option in ("no", ""):
+                return False
+
+        for gpu_name, gpu_props in unsupported_igpus:
+            gpu_props["Compatibility"] = (os_data.get_latest_darwin_version(), self.nearest_igpu_min_version)
+            gpu_props["Spoof Device ID"] = self.nearest_igpu_device_id
+            print("{}- {}: {} (using Ice Lake iGPU patches)".format(" "*3, gpu_name, self.show_macos_compatibility(gpu_props.get("Compatibility"))))
+
+        return True
 
     def _restrict_native_compatibility(self, compatibility):
         max_version, min_version = compatibility
@@ -215,6 +249,12 @@ class CompatibilityChecker:
             for gpu_props in self.hardware_report.get("GPU").values()
         )
         
+        if gpu_compatibility == (None, None) and self.use_nearest_igpu_fallback():
+            gpu_compatibility = self._widest_compatibility(
+                gpu_props.get("Compatibility")
+                for gpu_props in self.hardware_report.get("GPU").values()
+            )
+
         if gpu_compatibility == (None, None):
             print("")
             print("You cannot install macOS without a supported GPU.")
