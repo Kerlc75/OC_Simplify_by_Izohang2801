@@ -15,6 +15,7 @@ class ConfigProdigy:
         self.g = gathering_files.gatheringFiles()
         self.smbios = smbios.SMBIOS()
         self.utils = utils.Utils()
+        self.warnings = []
         self.cpuids = {
             "Ivy Bridge": "A9060300",
             "Haswell": "C3060300",
@@ -222,7 +223,7 @@ class ConfigProdigy:
             igpu_properties["framebuffer-stolenmem"] = "00003001"
             igpu_properties["framebuffer-fbmem"] = "00009000"
         else:
-            print(f"Warning: Unrecognized Intel iGPU device ID '{device_id}' — no framebuffer patch applied")
+            self.warnings.append(f"Unrecognized Intel iGPU device ID '{device_id}' — no framebuffer patch applied")
 
         if any(tuple(map(int, "3840x2160".split("x"))) <= tuple(map(int, monitor_info.get("Resolution").split("x"))) for monitor_name, monitor_info in monitor.items()):
             if platform == "Laptop":
@@ -615,6 +616,8 @@ class ConfigProdigy:
         return uefi_drivers
 
     def genarate(self, hardware_report, disabled_devices, smbios_model, macos_version, needs_oclp, kexts, config):
+        self.warnings = []
+
         del config["#WARNING - 1"]
         del config["#WARNING - 2"]
         del config["#WARNING - 3"]

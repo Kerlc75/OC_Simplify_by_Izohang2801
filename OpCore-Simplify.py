@@ -455,6 +455,10 @@ class OCPE:
                 print("Your OpenCore EFI for {} has been built at:".format(customized_hardware.get("Motherboard").get("Name")))
                 print("\t{}".format(self.result_dir))
                 print("")
+                for warning in self.co.warnings:
+                    print("\033[93mWarning: {}\033[0m".format(warning))
+                if self.co.warnings:
+                    print("")
                 self.u.request_input("Press Enter to main menu...")
 
 if __name__ == '__main__':
